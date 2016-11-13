@@ -7,6 +7,7 @@
 * You have been warned.                                                  *
 *                                                                        *
 * (C) 2010 Davide Brini.                                                 *
+* (C) 2016 Shawn Anastasio.
 *                                                                        *
 * DISCLAIMER AND WARNING: this is all work in progress. The code is      *
 * ugly, the algorithms are naive, error checking and input validation    *
@@ -41,6 +42,8 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
+#include "iputils.h"
+
 /* buffer for reading from tun/tap interface, must be >= 1500 */
 #define BUFSIZE 2000   
 #define PORT 55555
@@ -73,7 +76,7 @@ void do_debug(char *msg, ...){
 *            must reserve enough space in *dev. If address is not empty, *
 *            the device will be assigned to that address.
 **************************************************************************/
-net_fds_t net_setup(char *dev, int flags, char *address) {
+net_fds_t net_setup(char *dev, int flags, char *address, char *netmask) {
     struct ifreq ifr;
     int fd, err, socket_fd;
     char *clonedev = "/dev/net/tun";
@@ -105,13 +108,11 @@ net_fds_t net_setup(char *dev, int flags, char *address) {
     strcpy(dev, ifr.ifr_name);
 
     socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (strlen(address) != 0) {
+    if (strlen(address) != 0 && strlen(netmask) != 0) {
         do_debug("Setting device IP address to %s\n", address);
         struct sockaddr_in sin = {
             .sin_family = AF_INET,
         };
-        //struct sockaddr_in *sin = (struct sockaddr_in *)&ifr.ifr_addr;
-        //memset(sin, 0, sizeof(struct sockaddr_in));
 
         // Set IP address, netmask, and mark interface as up
         // IP
@@ -214,12 +215,13 @@ void my_err(char *msg, ...) {
 **************************************************************************/
 void usage(void) {
     fprintf(stderr, "Usage:\n");
-    fprintf(stderr, "%s -i <ifacename> [-s|-c <serverIP>] [-p <port>] [-u|-a] [-d]\n", progname);
+    fprintf(stderr, "%s -i <ifacename> [-s|-c <serverIP>] [-p <port>] [-l <localIP>/<netmask>] [-u|-a] [-d]\n", progname);
     fprintf(stderr, "%s -h\n", progname);
     fprintf(stderr, "\n");
     fprintf(stderr, "-i <ifacename>: Name of interface to use (mandatory)\n");
     fprintf(stderr, "-s|-c <serverIP>: run in server mode (-s), or specify server address (-c <serverIP>) (mandatory)\n");
     fprintf(stderr, "-p <port>: port to listen on (if run in server mode) or to connect to (in client mode), default 55555\n");
+    fprintf(stderr, "-l <localIP>/<netmask>: the IP address/short netmask combo to set the local TUN/TAP adapter to. Ex. -l 192.168.1/24\n");
     fprintf(stderr, "-u|-a: use TUN (-u, default) or TAP (-a)\n");
     fprintf(stderr, "-d: outputs debug information while running\n");
     fprintf(stderr, "-h: prints this help text\n");
@@ -236,11 +238,13 @@ int main(int argc, char *argv[]) {
     char buffer[BUFSIZE];
     struct sockaddr_in local, remote;
     char remote_ip[16] = "";            /* dotted quad IP string */
-    char local_ip[16] = "";
+    char local_ip_full[19] = ""; // Local IP and short netmask, ex: 192.168.1.1/24
+    char local_ip[16] = "";      // only local IP, ex: 192.168.1.1
+    char netmask[16] = "";       // only netmask, ex: 255.255.255.0
     uint16_t port = PORT;
     int optval = 1;
     socklen_t remotelen;
-    int is_server = 2;
+    bool is_server = true, has_localip = false;
     uint64_t tap2net = 0, net2tap = 0;
 
     progname = argv[0];
@@ -274,7 +278,8 @@ int main(int argc, char *argv[]) {
             flags = IFF_TAP;
             break;
             case 'l':
-            strncpy(local_ip, optarg, 15);
+            strncpy(local_ip_full, optarg, 18);
+            has_localip = true;
             break;
             default:
             my_err("Unknown option %c\n", option);
@@ -301,8 +306,25 @@ int main(int argc, char *argv[]) {
         usage();
     }
 
+    // If a local IP was specified, validate it
+    if (has_localip) {
+        // Extract short netmask
+        strtok(local_ip_full, "/");
+        char *short_nm = strtok(NULL, "/");
+        if (!short_nm || atoi(short_nm) > 30 || atoi(short_nm) < 16) {
+            fprintf(stderr, "Invalid local_ip/netmask! Example: 192.168.1.1/24\n");
+            exit(1);
+        }
+        // Convert into full netmask
+        get_full_netmask(netmask, atoi(short_nm));
+        // Extract IP part
+        size_t len = abs((size_t)(local_ip_full-short_nm)) - 1;
+        strncpy(local_ip, local_ip_full, len);
+        do_debug("Local IP: %s\nnetmask: %s\n", local_ip, netmask);
+    }
+
     /* initialize network */
-    net_fds_t fds = net_setup(if_name, flags | IFF_NO_PI, local_ip);
+    net_fds_t fds = net_setup(if_name, flags | IFF_NO_PI, local_ip, netmask);
     if ( fds.dev_fd < 0 ) {
         my_err("Error connecting to tun/tap interface %s!\n", if_name);
         exit(1);
@@ -314,7 +336,7 @@ int main(int argc, char *argv[]) {
     }
     // Mutable variable to access the socket file descriptor
     net_fd = fds.socket_fd;
-    
+
     do_debug("Successfully connected to interface %s\n", if_name);
     do_debug("DEV_FD: %d\nSOC_FD: %d\n", fds.dev_fd, fds.socket_fd);
 

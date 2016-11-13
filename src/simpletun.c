@@ -234,7 +234,6 @@ int main(int argc, char *argv[]) {
     int maxfd;
     uint16_t nread, nwrite, plength;
     char buffer[BUFSIZE];
-    char compression_buf[BUFSIZE];
     struct sockaddr_in local, remote;
     char remote_ip[16] = "";            /* dotted quad IP string */
     char local_ip_full[19] = ""; // Local IP and short netmask, ex: 192.168.1.1/24
@@ -421,18 +420,13 @@ int main(int argc, char *argv[]) {
             do_debug("TAP2NET %lu: Read %d bytes from the tap interface\n", tap2net, nread);
 
             // Compress buffer
-            int compress_n;
-            compress_n = compress_data(compression_buf, buffer, nread);
-            // Decompress
-            int decompress_n;
-            decompress_n = decompress_data(buffer, compression_buf, compress_n);
-
-            printf("Data compressed from %d to %d bytes then back to %d\n", nread, compress_n, decompress_n);
-
-            /* write length + packet */
-            plength = htons(nread);
+            char compression_buf[BUFSIZE];
+            int compress_n = compress_data(compression_buf, buffer, nread);
+        
+            /* write length + packet of compressed data */
+            plength = htons(compress_n);
             nwrite = cwrite(net_fd, (char *)&plength, sizeof(plength));
-            nwrite = cwrite(net_fd, buffer, nread);
+            nwrite = cwrite(net_fd, compression_buf, compress_n);
 
             do_debug("TAP2NET %lu: Written %d bytes to the network\n", tap2net, nwrite);
         }
@@ -456,15 +450,15 @@ int main(int argc, char *argv[]) {
 
             /* now buffer[] contains a full packet or frame*/
             // Decompress incomming data
-            char decompressed[BUFSIZE];
+            char decompression_buf[BUFSIZE];
             int decompress_n = decompress_data(decompressed, buffer, nread);
 
             // Confirm that decompression worked and send over network
             if (decompress_n > 0) {
-                nwrite = cwrite(fds.dev_fd, decompressed, decompress_n);
+                nwrite = cwrite(fds.dev_fd, decompression_buf, decompress_n);
                 do_debug("NET2TAP %lu: Written %d bytes to the tap interface\n", net2tap, nwrite);
             } else {
-                do_debug("NET2TAP %lu: Decompression failed on incoming packet", net2tap);
+                do_debug("NET2TAP %lu: Decompression failed on incoming packet\n", net2tap);
             }
         }
     }

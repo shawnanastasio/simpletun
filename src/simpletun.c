@@ -421,14 +421,18 @@ int main(int argc, char *argv[]) {
 
             // Compress buffer
             char compression_buf[BUFSIZE];
+            printf("compress_data(compression_buf, buffer, %d)\n", nread);
             int compress_n = compress_data(compression_buf, buffer, nread);
-        
-            /* write length + packet of compressed data */
-            plength = htons(compress_n);
-            nwrite = cwrite(net_fd, (char *)&plength, sizeof(plength));
-            nwrite = cwrite(net_fd, compression_buf, compress_n);
 
-            do_debug("TAP2NET %lu: Written %d bytes to the network\n", tap2net, nwrite);
+            if (compress_n > 0) {
+                /* write length + packet of compressed data */
+                plength = htons(compress_n);
+                nwrite = cwrite(net_fd, (char *)&plength, sizeof(plength));
+                nwrite = cwrite(net_fd, compression_buf, compress_n);
+                do_debug("TAP2NET %lu: Written %d bytes to the network\n", tap2net, nwrite);
+            } else {
+                do_debug("TAP2NET %lu: Compression failed on outgoing packet\n", tap2net);
+            }
         }
 
         if(FD_ISSET(net_fd, &rd_set)) {

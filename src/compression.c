@@ -22,11 +22,12 @@ int compress_data(char *buf, char *data, uint32_t dataSize) {
         .opaque = Z_NULL,
         .avail_in = dataSize,
         .next_in = (Bytef *)data,
-        .avail_out = dataSize,
+        .avail_out = BUFSIZE,
         .next_out = (Bytef *)buf
     };
     // Compress the buffer
     if ((res = deflateInit(&defstream, Z_BEST_COMPRESSION)) != Z_OK) {
+        printf("cRIP1");
         return 0;
     }
 
@@ -34,6 +35,8 @@ int compress_data(char *buf, char *data, uint32_t dataSize) {
     deflateEnd(&defstream);
 
     if (res != Z_STREAM_END) {
+        printf("cRIP2: %d\n", res);
+        printf("availin %d availaout: %d\n", defstream.avail_in, defstream.avail_out);
         return 0;
     }
 
@@ -57,7 +60,7 @@ int decompress_data(char *buf, char *data, uint32_t dataSize) {
 
     // Decompress the buffer
     if ((res = inflateInit(&defstream)) != Z_OK) {
-        //printf("RIP1\n");
+        printf("dRIP1\n");
         return 0;
     }
 
@@ -65,8 +68,8 @@ int decompress_data(char *buf, char *data, uint32_t dataSize) {
     inflateEnd(&defstream);
 
     if (res != Z_STREAM_END) {
-        //printf("RIP2: %d\n", res);
-        //printf("availin %d availaout: %d\n", defstream.avail_in, defstream.avail_out);
+        printf("dRIP2: %d\n", res);
+        printf("availin %d availaout: %d\n", defstream.avail_in, defstream.avail_out);
         return 0;
     }
 

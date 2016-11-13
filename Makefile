@@ -2,10 +2,10 @@ PREFIX=/usr
 BINDIR=$(PREFIX)/bin
 
 CC=gcc
-CFLAGS=-Wextra -Wall -O2
-INSTALL=ginstall
+CFLAGS=-std=gnu99 $(shell pkg-config zlib --libs)
+INSTALL=install
 
-DEPS=iputils.c
+DEPS=src/iputils.c src/compression.c
 
 all:	simpletun
 distclean:	clean
@@ -15,10 +15,7 @@ clean:
 	rm -f *.o
 
 simpletun: clean $(DEPS)
-	$(CC) -o simpletun $(DEPS) simpletun.c $(CFLAGS)
-
-%.o: %.c
-	$(CC) -o $@ -c $< $(CFLAGS)
+	$(CC) -o simpletun src/simpletun.c $(DEPS) $(CFLAGS)
 
 install: all
 	$(INSTALL) -D simpletun $(DESTDIR)$(BINDIR)/simpletun

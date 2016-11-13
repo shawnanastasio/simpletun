@@ -21,6 +21,7 @@
 * explicit. See the file LICENSE for further details.                    *
 *************************************************************************/ 
 
+/* C stdlib includes */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,9 +29,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* 3rd party library includes */
+#include <zlib.h>
+
+/* POSIX includes */
 #include <unistd.h>
 #include <errno.h>
 
+/* Linux includes */
 #include <net/if.h>
 #include <linux/if_tun.h>
 #include <sys/types.h>
@@ -42,17 +48,9 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
+#include "simpletun.h"
 #include "iputils.h"
-
-/* buffer for reading from tun/tap interface, must be >= 1500 */
-#define BUFSIZE 2000   
-#define PORT 55555
-
-struct net_fds {
-    int dev_fd;
-    int socket_fd;
-};
-typedef struct net_fds net_fds_t;
+#include "compression.h"
 
 int debug;
 char *progname;
@@ -60,7 +58,7 @@ char *progname;
 /**************************************************************************
 * do_debug: prints debugging stuff (doh!)                                *
 **************************************************************************/
-void do_debug(char *msg, ...){
+void do_debug(char *msg, ...) {
 
     va_list argp;
 
@@ -154,7 +152,7 @@ ret:
 * cread: read routine that checks for errors and exits if an error is    *
 *        returned.                                                       *
 **************************************************************************/
-int cread(int fd, char *buf, int n){
+int cread(int fd, char *buf, int n) {
     int nread;
 
     if((nread=read(fd, buf, n)) < 0){
@@ -168,7 +166,7 @@ int cread(int fd, char *buf, int n){
 * cwrite: write routine that checks for errors and exits if an error is  *
 *         returned.                                                      *
 **************************************************************************/
-int cwrite(int fd, char *buf, int n){
+int cwrite(int fd, char *buf, int n) {
 
     int nwrite;
 
@@ -236,6 +234,7 @@ int main(int argc, char *argv[]) {
     int maxfd;
     uint16_t nread, nwrite, plength;
     char buffer[BUFSIZE];
+    char compression_buf[BUFSIZE];
     struct sockaddr_in local, remote;
     char remote_ip[16] = "";            /* dotted quad IP string */
     char local_ip_full[19] = ""; // Local IP and short netmask, ex: 192.168.1.1/24
@@ -421,6 +420,15 @@ int main(int argc, char *argv[]) {
             tap2net++;
             do_debug("TAP2NET %lu: Read %d bytes from the tap interface\n", tap2net, nread);
 
+            // Compress buffer
+            int compress_n;
+            compress_n = compress_data(compression_buf, buffer, nread);
+            // Decompress
+            int decompress_n;
+            decompress_n = decompress_data(buffer, compression_buf, compress_n);
+
+            printf("Data compressed from %d to %d bytes then back to %d\n", nread, compress_n, decompress_n);
+
             /* write length + packet */
             plength = htons(nread);
             nwrite = cwrite(net_fd, (char *)&plength, sizeof(plength));
@@ -446,9 +454,18 @@ int main(int argc, char *argv[]) {
             nread = read_n(net_fd, buffer, ntohs(plength));
             do_debug("NET2TAP %lu: Read %d bytes from the network\n", net2tap, nread);
 
-            /* now buffer[] contains a full packet or frame, write it into the tun/tap interface */ 
-            nwrite = cwrite(fds.dev_fd, buffer, nread);
-            do_debug("NET2TAP %lu: Written %d bytes to the tap interface\n", net2tap, nwrite);
+            /* now buffer[] contains a full packet or frame*/
+            // Decompress incomming data
+            char decompressed[BUFSIZE];
+            int decompress_n = decompress_data(decompressed, buffer, nread);
+
+            // Confirm that decompression worked and send over network
+            if (decompress_n > 0) {
+                nwrite = cwrite(fds.dev_fd, decompressed, decompress_n);
+                do_debug("NET2TAP %lu: Written %d bytes to the tap interface\n", net2tap, nwrite);
+            } else {
+                do_debug("NET2TAP %lu: Decompression failed on incoming packet", net2tap);
+            }
         }
     }
 

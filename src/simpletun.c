@@ -451,7 +451,7 @@ int main(int argc, char *argv[]) {
             /* now buffer[] contains a full packet or frame*/
             // Decompress incomming data
             char decompression_buf[BUFSIZE];
-            int decompress_n = decompress_data(decompressed, buffer, nread);
+            int decompress_n = decompress_data(decompression_buf, buffer, nread);
 
             // Confirm that decompression worked and send over network
             if (decompress_n > 0) {

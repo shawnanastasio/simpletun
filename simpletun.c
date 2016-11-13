@@ -312,6 +312,9 @@ int main(int argc, char *argv[]) {
         perror("socket()");
         exit(1);
     }
+    // Mutable variable to access the socket file descriptor
+    net_fd = fds.socket_fd;
+    
     do_debug("Successfully connected to interface %s\n", if_name);
     do_debug("DEV_FD: %d\nSOC_FD: %d\n", fds.dev_fd, fds.socket_fd);
 

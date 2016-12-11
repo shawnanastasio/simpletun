@@ -19,7 +19,7 @@
 * purposes, and can be used in the hope that is useful, but everything   *
 * is to be taken "as is" and without any kind of warranty, implicit or   *
 * explicit. See the file LICENSE for further details.                    *
-*************************************************************************/ 
+*************************************************************************/
 
 /* C stdlib includes */
 #include <stdio.h>
@@ -44,7 +44,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <arpa/inet.h> 
+#include <arpa/inet.h>
 #include <sys/select.h>
 #include <sys/time.h>
 
@@ -72,7 +72,7 @@ void do_debug(char *msg, ...) {
 /**************************************************************************
 * net_setup: allocates or reconnects to a tun/tap device. The caller     *
 *            must reserve enough space in *dev. If address is not empty, *
-*            the device will be assigned to that address.
+*            the device will be assigned to that address.                *
 **************************************************************************/
 net_fds_t net_setup(char *dev, int flags, char *address, char *netmask) {
     struct ifreq ifr;
@@ -123,7 +123,7 @@ net_fds_t net_setup(char *dev, int flags, char *address, char *netmask) {
         }
 
         // netmask
-        if (inet_pton(AF_INET, "255.255.255.0", &sin.sin_addr.s_addr) == 0) {
+        if (inet_pton(AF_INET, netmask, &sin.sin_addr.s_addr) == 0) {
             fprintf(stderr, "Invalid netmask!\n");
         }
         memcpy(&ifr.ifr_addr, &sin, sizeof(struct sockaddr_in));
@@ -187,13 +187,13 @@ int read_n(int fd, char *buf, int n) {
 
     while(left > 0) {
         if ((nread = cread(fd, buf, left)) == 0){
-            return 0 ;      
+            return 0 ;
         } else {
             left -= nread;
             buf += nread;
         }
     }
-    return n;  
+    return n;
 }
 
 /**************************************************************************
@@ -251,37 +251,37 @@ int main(int argc, char *argv[]) {
     while((option = getopt(argc, argv, "i:sc:p:uahdl:")) > 0) {
         switch(option) {
             case 'd':
-            debug = 1;
-            break;
+                debug = 1;
+                break;
             case 'h':
-            usage();
-            break;
+                usage();
+                break;
             case 'i':
-            strncpy(if_name,optarg, IFNAMSIZ-1);
-            break;
+                strncpy(if_name,optarg, IFNAMSIZ-1);
+                break;
             case 's':
-            is_server = true;
-            break;
+                is_server = true;
+                break;
             case 'c':
-            is_server = false;
-            strncpy(remote_ip, optarg, 15);
-            break;
+                is_server = false;
+                strncpy(remote_ip, optarg, 15);
+                break;
             case 'p':
-            port = atoi(optarg);
-            break;
+                port = atoi(optarg);
+                break;
             case 'u':
-            flags = IFF_TUN;
-            break;
+                flags = IFF_TUN;
+                break;
             case 'a':
-            flags = IFF_TAP;
-            break;
+                flags = IFF_TAP;
+                break;
             case 'l':
-            strncpy(local_ip_full, optarg, 18);
-            has_localip = true;
-            break;
+                strncpy(local_ip_full, optarg, 18);
+                has_localip = true;
+                break;
             default:
-            my_err("Unknown option %c\n", option);
-            usage();
+                my_err("Unknown option %c\n", option);
+                usage();
         }
     }
 
@@ -319,6 +319,8 @@ int main(int argc, char *argv[]) {
         size_t len = abs((size_t)(local_ip_full-short_nm)) - 1;
         strncpy(local_ip, local_ip_full, len);
         do_debug("Local IP: %s\nnetmask: %s\n", local_ip, netmask);
+    } else {
+        do_debug("WARNING: No IP/netmask specified! Tunnel will not work until they are set up manually!");
     }
 
     /* initialize network */
@@ -436,10 +438,10 @@ int main(int argc, char *argv[]) {
         }
 
         if(FD_ISSET(net_fd, &rd_set)) {
-            /* data from the network: read it, and write it to the tun/tap interface. 
+            /* data from the network: read it, and write it to the tun/tap interface.
              * We need to read the length first, and then the packet */
 
-            /* Read length */      
+            /* Read length */
             nread = read_n(net_fd, (char *)&plength, sizeof(plength));
             if(nread == 0) {
             /* ctrl-c at the other end */
